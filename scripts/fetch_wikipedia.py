@@ -1,8 +1,8 @@
-"""Phase 1, step 2: choose which films to keep, then fetch their Wikipedia text.
+"""Movies, step 2: choose which films to keep, then fetch their Wikipedia text.
 
-Selection rule (decided from the real Wikidata counts):
-  - Indian-language films: all of them.
-  - English films: per year, the ENGLISH_PER_YEAR films with the most Wikipedia
+Selection rule (user's choice, 2026-11-22):
+  - Hindi (Bollywood) films: all of them.
+  - American films: per year, the US_PER_YEAR films with the most Wikipedia
     language editions (Wikidata "sitelinks", a rough fame/notability signal).
 Text is fetched as wikitext, 50 articles per request (Wikimedia asks for
 batching), one request at a time, cached (reruns are instant).
@@ -19,7 +19,7 @@ import requests
 from text_utils import split_wikitext
 from wiki_client import wikipedia_wikitext_batch
 
-ENGLISH_PER_YEAR = 100
+US_PER_YEAR = 100
 BATCH = 50  # the API's maximum number of titles per request (without login)
 IN_FILE = Path("data/interim/wikidata_films.json")
 OUT = Path("data/interim/wikipedia_texts.json")
@@ -27,16 +27,16 @@ OUT = Path("data/interim/wikipedia_texts.json")
 
 def select(films):
     """Return the films we keep, following the rule in the docstring."""
-    indian = [f for f in films if f["found_via"] != "en"]
-    english_by_year = defaultdict(list)
+    hindi = [f for f in films if f["found_via"] == "hi"]
+    us_by_year = defaultdict(list)
     for f in films:
-        if f["found_via"] == "en":
-            english_by_year[f["year"]].append(f)
-    english = []
-    for year, group in sorted(english_by_year.items()):
+        if f["found_via"] == "us":
+            us_by_year[f["year"]].append(f)
+    american = []
+    for year, group in sorted(us_by_year.items()):
         group.sort(key=lambda f: (-f["sitelinks"], f["qid"]))  # stable order
-        english += group[:ENGLISH_PER_YEAR]
-    return indian + english
+        american += group[:US_PER_YEAR]
+    return hindi + american
 
 
 if __name__ == "__main__":

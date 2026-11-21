@@ -1,5 +1,6 @@
 """The search engine: embeddings, BM25, hybrid (RRF), optional re-rank, filters,
-"more like this" and "why it matched".
+"more like this" and "why it matched". One Engine per domain (movies, books,
+songs; see domains.py). The word "film" below means "item" for books and songs.
 
 The Engine class only needs films + vectors + an `encode` function, so tests
 can build a tiny engine with fake vectors. `load_engine()` builds the real one
@@ -12,6 +13,7 @@ from pathlib import Path
 import numpy as np
 from rank_bm25 import BM25Okapi
 
+from domains import DOMAINS, MAX_PER_GROUP
 from text_utils import chunk_prefix, sentences
 
 METHODS = ["bm25", "emb_short", "emb_chunks", "hybrid", "hybrid_rerank"]
@@ -36,8 +38,9 @@ def bm25_text(film):
 
 class Engine:
     def __init__(self, films, short_vecs, chunk_vecs, chunk_owner, encode,
-                 rerank_fn=None, short_texts=None, chunk_texts=None):
+                 rerank_fn=None, short_texts=None, chunk_texts=None, max_per_group=None):
         self.films = films
+        self.max_per_group = max_per_group  # songs: at most N songs per film
         self.short = short_vecs            # (n_films, d), unit length
         self.chunks = chunk_vecs           # (n_chunks, d), unit length
         self.owner = chunk_owner           # chunk -> film index
@@ -98,6 +101,24 @@ class Engine:
     # ---------- main entry point ----------
     def search(self, query, method="hybrid", k=10, **filters):
         """Return a list of (film_index, score) for the query."""
+        if not self.max_per_group:
+            return self._search(query, method, k, **filters)
+        # Songs from one film share the film's text, so they score alike:
+        # fetch more, then keep at most max_per_group per film.
+        return self.diversify(self._search(query, method, k * 6, **filters), k)
+
+    def diversify(self, ranked, k):
+        out, seen = [], {}
+        for i, s in ranked:
+            g = self.films[i].get("group_id") or self.films[i]["id"]
+            if seen.get(g, 0) < self.max_per_group:
+                seen[g] = seen.get(g, 0) + 1
+                out.append((i, s))
+                if len(out) == k:
+                    break
+        return out
+
+    def _search(self, query, method, k, **filters):
         if method not in METHODS:
             raise ValueError(f"unknown method {method!r}; use one of {METHODS}")
         m = self.mask(**filters)
@@ -134,7 +155,12 @@ class Engine:
         """Films whose short vector is closest to this film's short vector."""
         i = self.id_to_idx[film_id]
         m = self.mask(exclude=i, **filters)
+        group = self.films[i].get("group_id")
+        if group:  # songs: suggest songs from OTHER films
+            m &= np.array([f.get("group_id") != group for f in self.films])
         s = self.short @ self.short[i]
+        if self.max_per_group:
+            return self.diversify([(j, float(s[j])) for j in self.top(s, m, k * 6)], k)
         return [(j, float(s[j])) for j in self.top(s, m, k)]
 
     def why(self, query, film_index):
@@ -192,32 +218,59 @@ class Engine:
 
     def film_card(self, i, score=None):
         f = self.films[i]
-        return {"id": f["id"], "title": f["title"], "year": f["year"],
+        card = {"id": f["id"], "title": f["title"], "year": f["year"],
                 "language": f["language"], "genres": f["genres"],
                 "genres_fine": f["genres_fine"], "first_sentence": f["first_sentence"],
                 "wiki_url": f["wiki_url"], "score": score}
+        for extra in ("creator", "subtitle", "link_label", "extra_url", "extra_label"):
+            if f.get(extra):
+                card[extra] = f[extra]
+        return card
 
 
-def load_engine(root=".", with_rerank=False):
-    """Build the real engine from data/clean + data/index (run build_index first)."""
-    from sentence_transformers import SentenceTransformer
-    root = Path(root)
+_MODELS = {}
+
+
+def get_encoder(name):
+    """Load the embedding model once and share it between domains."""
+    if name not in _MODELS:
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer(name, device="cpu")
+        _MODELS[name] = lambda texts: model.encode(
+            texts, normalize_embeddings=True, convert_to_numpy=True,
+            show_progress_bar=False, batch_size=64)
+    return _MODELS[name]
+
+
+def available_domains(root="."):
+    """Domains whose data and index have been built."""
+    return [d for d, c in DOMAINS.items()
+            if (Path(root) / c["index"] / "meta.json").exists()]
+
+
+def load_engines(root="."):
+    """{domain: Engine} for every built domain (movies first)."""
+    return {d: load_engine(root, d) for d in available_domains(root)}
+
+
+def load_engine(root=".", domain="movies", with_rerank=False):
+    """Build the real engine for one domain from its clean data + index
+    (run the fetch/clean scripts and build_index.py first)."""
+    root, conf = Path(root), DOMAINS[domain]
     films = [json.loads(line) for line in
-             (root / "data/clean/films.jsonl").open(encoding="utf-8")]
-    idx = root / "data/index"
+             (root / conf["items"]).open(encoding="utf-8")]
+    idx = root / conf["index"]
     meta = json.loads((idx / "meta.json").read_text(encoding="utf-8"))
     if meta["ids"] != [f["id"] for f in films]:
-        raise RuntimeError("index is out of date: rerun scripts/build_index.py")
-    model = SentenceTransformer(meta["model"], device="cpu")
-
-    def encode(texts):
-        return model.encode(texts, normalize_embeddings=True, convert_to_numpy=True,
-                            show_progress_bar=False, batch_size=64)
+        raise RuntimeError(f"{domain} index is out of date: rerun "
+                           f"scripts/build_index.py {domain}")
+    encode = get_encoder(meta["model"])
 
     short_texts = json.loads((idx / "short_texts.json").read_text(encoding="utf-8"))
     chunk_texts = json.loads((idx / "chunk_texts.json").read_text(encoding="utf-8"))
     eng = Engine(films, np.load(idx / "short.npy"), np.load(idx / "chunks.npy"),
-                 np.load(idx / "chunk_owner.npy"), encode, None, short_texts, chunk_texts)
+                 np.load(idx / "chunk_owner.npy"), encode, None, short_texts, chunk_texts,
+                 max_per_group=MAX_PER_GROUP if domain == "songs" else None)
     if with_rerank:
         eng.enable_rerank()
     return eng

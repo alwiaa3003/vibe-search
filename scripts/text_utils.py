@@ -6,6 +6,9 @@ import mwparserfromhell
 DROP_TAGS = {"ref", "references", "gallery", "table", "timeline", "math", "score"}
 PLOT_HEADINGS = {"plot", "synopsis", "plot summary", "premise", "story",
                  "summary", "storyline", "plot synopsis"}
+# Books also use these for the section that says what the book is about.
+BOOK_HEADINGS = PLOT_HEADINGS | {"plot overview", "content", "contents", "overview",
+                                 "synopsis and themes", "plot and themes", "outline"}
 
 # Coarse genres for filtering: if a Wikidata genre label contains the key,
 # the film gets that coarse genre. "romantic comedy" -> romance + comedy.
@@ -25,13 +28,22 @@ GENRE_RULES = [
     ("slasher", "horror"), ("heist", "crime"), ("noir", "crime"),
     ("dance", "musical"),
 ]
+# Extra coarse genres for books (memoir -> biography, dystopian -> sci-fi, ...).
+BOOK_GENRE_RULES = GENRE_RULES + [
+    ("memoir", "biography"), ("autobiograph", "biography"), ("young adult", "young adult"),
+    ("non-fiction", "non-fiction"), ("nonfiction", "non-fiction"), ("essay", "non-fiction"),
+    ("self-help", "non-fiction"), ("literary fiction", "literary"), ("poetry", "poetry"),
+    ("short stor", "short stories"), ("graphic novel", "graphic novel"), ("dystopia", "sci-fi"),
+    ("speculative", "sci-fi"), ("gothic", "horror"), ("crime fiction", "crime"),
+    ("love story", "romance"), ("history", "history"), ("children's", "family"),
+]
 
 
 def words(s):
     return len(s.split())
 
 
-def split_wikitext(wikitext):
+def split_wikitext(wikitext, headings=PLOT_HEADINGS):
     """Return (lead, plot) as plain text from an article's wikitext.
 
     mwparserfromhell drops templates (infoboxes, citations), <ref> footnotes
@@ -57,7 +69,7 @@ def split_wikitext(wikitext):
     plot = ""
     for sec in code.get_sections(levels=[2]):
         heading = sec.filter_headings()[0]
-        if heading.title.strip_code().strip().lower() in PLOT_HEADINGS:
+        if heading.title.strip_code().strip().lower() in headings:
             for h in sec.filter_headings():  # drop "Plot" and any sub-headings
                 sec.remove(h)
             plot = clean(sec.strip_code())
@@ -136,11 +148,11 @@ def normalise_genre(label):
     return re.sub(r"\s+(film|movie)s?$", "", label)
 
 
-def coarse_genres(raw_labels):
+def coarse_genres(raw_labels, rules=GENRE_RULES):
     found = set()
     for label in raw_labels:
         low = label.lower()
-        for key, genre in GENRE_RULES:
+        for key, genre in rules:
             if key in low:
                 found.add(genre)
     return sorted(found)

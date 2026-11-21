@@ -1,13 +1,15 @@
-"""Phase 1, step 1: list candidate films from Wikidata.
+"""Movies, step 1: list candidate films from Wikidata.
 
-One SPARQL query per (language, year), so every query stays small and fast.
-A film counts for the year of its EARLIEST publication date (P577); films whose
-earliest date is before 2010 are dropped.
-English films are far more numerous (~1,500 a year with an English article), and
-fetching all their details times out, so for English the query keeps only films
-with >= 15 Wikipedia language editions ("sitelinks", a rough fame signal).
-The query planner is told to follow our written order (start from the language),
-otherwise it picks a slow plan and the query times out.
+Two groups (decided by the user on 2026-11-22):
+  - hi: Bollywood = original language (P364) Hindi.
+  - us: American = country of origin (P495) United States.
+One SPARQL query per (group, year), 2000-2026, so every query stays small.
+A film counts for the year of its EARLIEST publication date (P577).
+American films are far more numerous (~1,500 a year with an English article),
+so the query keeps only those with >= 15 Wikipedia language editions
+("sitelinks", a rough fame signal); fetch_wikipedia.py then keeps the top 100
+per year. The query planner is told to follow our written order (start from
+the language/country), otherwise it picks a slow plan and times out.
 Output: data/interim/wikidata_films.json (local only, never committed).
 Run:  python scripts/fetch_wikidata.py
 """
@@ -21,12 +23,12 @@ import requests
 
 from wiki_client import sparql
 
-# Checked with scripts/lookup_ids.py (ISO 639-1 code -> Wikidata item).
-LANGS = {"hi": "Q1568", "ta": "Q5885", "te": "Q8097", "ml": "Q36236",
-         "kn": "Q33673", "bn": "Q9610", "mr": "Q1571", "pa": "Q58635",
-         "en": "Q1860"}
-YEARS = range(2010, 2027)
-MIN_SITELINKS = {"en": 15}  # other languages: no minimum
+# Item IDs checked with scripts/lookup_ids.py (Hindi = Q1568 via ISO code "hi";
+# Q30 = United States, P495 = country of origin).
+GROUPS = {"hi": "?film wdt:P364 wd:Q1568 .",   # Bollywood: original language Hindi
+          "us": "?film wdt:P495 wd:Q30 ."}     # American: country of origin USA
+YEARS = range(2000, 2027)
+MIN_SITELINKS = {"us": 15}  # Hindi: no minimum
 OUT = Path("data/interim/wikidata_films.json")
 
 QUERY = """
@@ -35,7 +37,7 @@ SELECT ?film ?article ?sitelinks (MIN(YEAR(?d2)) AS ?year)
   (GROUP_CONCAT(DISTINCT ?code; separator="|") AS ?langs) WHERE {
   { SELECT DISTINCT ?film WHERE {
       hint:Query hint:optimizer "None" .
-      ?film wdt:P364 wd:%(lang)s .
+      %(start)s
       ?film wdt:P31 wd:Q11424 .
       ?film wdt:P577 ?d .
       FILTER(?d >= "%(y)d-01-01T00:00:00Z"^^xsd:dateTime &&
@@ -52,11 +54,11 @@ SELECT ?film ?article ?sitelinks (MIN(YEAR(?d2)) AS ?year)
 
 films, failed = {}, []
 started = time.time()
-for code, qid in LANGS.items():
+for code, start in GROUPS.items():
     kept = 0
     for y in YEARS:
         try:
-            rows = sparql(QUERY % {"lang": qid, "y": y, "y1": y + 1,
+            rows = sparql(QUERY % {"start": start, "y": y, "y1": y + 1,
                                    "min_sl": MIN_SITELINKS.get(code, 0)})
         except (requests.RequestException, RuntimeError) as e:
             failed.append((code, y, type(e).__name__))

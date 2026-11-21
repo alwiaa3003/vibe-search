@@ -28,7 +28,7 @@ FIELDS = ["query_id", "query", "film_id", "title", "year", "language", "genres",
 
 
 def read_queries(path=QUERIES):
-    with path.open(encoding="utf-8", newline="") as fh:
+    with path.open(encoding="utf-8-sig", newline="") as fh:
         return [r for r in csv.DictReader(fh) if r["use"].strip().lower() == "yes"]
 
 
@@ -46,7 +46,7 @@ def main():
     eng = load_engine(with_rerank=True)
     old = {}
     if SHEET.exists():
-        with SHEET.open(encoding="utf-8", newline="") as fh:
+        with SHEET.open(encoding="utf-8-sig", newline="") as fh:
             for r in csv.DictReader(fh):
                 old[(r["query_id"], r["film_id"])] = (r["label"], r["comment"])
         backup = SHEET.with_name(f"labelling_sheet.backup-{time.strftime('%Y%m%d-%H%M%S')}.csv")

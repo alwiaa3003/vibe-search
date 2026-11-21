@@ -8,8 +8,10 @@ Two ways to represent a film:
                is later scored by its best-matching chunk.
 Token counts use the model's own tokenizer, so nothing is silently truncated
 (except single sentences longer than the window, which are counted below).
-Output: data/index/ (local only, never committed). Prints time and memory.
-Run:  python scripts/build_index.py
+Works for every domain (movies, books, songs; see domains.py).
+Output: data/index*/ (local only, never committed). Prints time and memory.
+Run:  python scripts/build_index.py            (movies)
+      python scripts/build_index.py books      (or: songs)
 """
 import json
 import os
@@ -20,12 +22,11 @@ from pathlib import Path
 import numpy as np
 import psutil
 
+from domains import DOMAINS
 from text_utils import build_short_text, chunk_prefix, plot_chunks, sentences
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 CHUNK_TOKENS = 128
-FILMS = Path("data/clean/films.jsonl")
-OUT = Path("data/index")
 
 
 def rss_mb():
@@ -45,6 +46,9 @@ def film_texts(film, size, window):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    domain = sys.argv[1] if len(sys.argv) > 1 else "movies"
+    FILMS, OUT = Path(DOMAINS[domain]["items"]), Path(DOMAINS[domain]["index"])
+    print(f"Domain: {domain}  ({FILMS} -> {OUT}/)")
     t0, mem0 = time.time(), rss_mb()
     from sentence_transformers import SentenceTransformer  # slow import
     model = SentenceTransformer(MODEL_NAME, device="cpu")

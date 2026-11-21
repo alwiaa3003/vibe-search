@@ -138,7 +138,7 @@ def main():
     runs = {m: {q: [eng.films[i]["id"] for i, _ in eng.search(texts[q], method=m, k=K)]
                 for q in labels} for m in METHODS}
     scores = score_runs(runs, labels)
-    with QUERIES.open(encoding="utf-8", newline="") as fh:
+    with QUERIES.open(encoding="utf-8-sig", newline="") as fh:
         kinds = {r["id"]: r["kind"] for r in csv.DictReader(fh)}
     info = json.loads(Path("eval/pool_info.json").read_text(encoding="utf-8"))
     info["data_date"] = json.loads(Path("data/clean/fetch_info.json").read_text(

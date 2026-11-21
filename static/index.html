@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vibe search</title>
+<script>
+  // Pick the theme before the page is drawn: the saved choice, else the computer's setting.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("theme"); } catch (e) {}
+    if (t !== "light" && t !== "dark")
+      t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
 <style>
   /* ---- Colours (light, then dark) ---- */
   :root {
@@ -13,14 +23,22 @@
     --glow: rgba(158,42,68,.10);
     --shadow: 0 1px 2px rgba(60,20,30,.05), 0 6px 20px rgba(60,20,30,.06);
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
+  /* Dark theme: chosen by the toggle button, or by the computer's setting
+     (a small script in <head> sets data-theme before the page is drawn). */
+  :root[data-theme="dark"] {
       /* gold accent on burgundy-black, like a cinema at night */
       --bg:#150c10; --fg:#f3e9e4; --muted:#b49c9f; --card:#22141a; --line:#3a232b;
       --accent:#e3b45c; --accent-soft:#3a2a1a; --accent-fg:#1a0f0a; --chip:#2a1820;
       --glow: rgba(170,40,70,.28);
       --shadow: 0 6px 24px rgba(0,0,0,.25);
-    }
+  }
+  .theme-toggle { position: absolute; top: 16px; right: clamp(16px, 3vw, 32px); display: flex; align-items: center; gap: 8px;
+                  border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 999px;
+                  padding: 8px 14px; font-weight: 600; font-size: .92rem; box-shadow: var(--shadow); }
+  .theme-toggle:hover { border-color: var(--accent); }
+  .theme-toggle .icon { font-size: 1.1rem; line-height: 1; }
+  @media (max-width: 700px) {  /* small screens: sit above the title instead of over it */
+    .theme-toggle { position: static; align-self: flex-end; margin-bottom: 8px; }
   }
   * { box-sizing: border-box; }
   body { margin:0; min-height:100vh; color:var(--fg);
@@ -116,30 +134,33 @@
 </head>
 <body>
 <main>
+  <button class="theme-toggle" id="theme" type="button" aria-label="Switch light or dark mode">
+    <span class="icon" id="theme-icon" aria-hidden="true">☀</span><span id="theme-text">Light</span>
+  </button>
   <header>
     <h1>Vibe search</h1>
     <p class="tagline">Describe a mood or a moment. Get something that fits.</p>
     <div class="tabs" role="tablist" aria-label="What to search">
       <button class="tab" role="tab" data-tab="movies" aria-selected="true">Movies</button>
-      <button class="tab" role="tab" data-tab="books" aria-selected="false">Books <span class="soon">soon</span></button>
-      <button class="tab" role="tab" data-tab="songs" aria-selected="false">Songs <span class="soon">soon</span></button>
+      <button class="tab" role="tab" data-tab="books" aria-selected="false">Books</button>
+      <button class="tab" role="tab" data-tab="songs" aria-selected="false">Songs</button>
     </div>
   </header>
 
-  <!-- ===== Movies ===== -->
-  <section id="panel-movies">
+  <section id="panel">
     <form id="f" class="searchbox" role="search">
-      <input id="q" type="text" autocomplete="off" placeholder="How are you feeling? e.g. cosy mystery for a rainy evening" aria-label="Describe the movie you want">
-      <button class="go" type="submit" id="go">Find movies</button>
+      <input id="q" type="text" autocomplete="off" aria-label="Describe what you want">
+      <button class="go" type="submit" id="go">Find</button>
     </form>
 
+    <div class="hint" id="about"></div>
     <div class="hint">Not sure? Try one of these:</div>
     <div class="chips" id="moods"></div>
 
     <button class="filters-toggle" id="ftoggle" type="button" aria-expanded="false">Filters ▾</button>
     <div class="filters" id="filters">
       <div class="frow">
-        <div class="label">Language</div>
+        <div class="label" id="glabel">Group</div>
         <div class="chips" id="langs"></div>
       </div>
       <div class="frow">
@@ -165,48 +186,59 @@
     <div id="results" class="grid"></div>
   </section>
 
-  <!-- ===== Books / Songs (not built yet) ===== -->
-  <section id="panel-books" hidden>
+  <section id="notbuilt" hidden>
     <div class="soonbox">
-      <h2>Books are on the way</h2>
-      <p>This section isn't built yet. It will search books from 2000 onwards: Indian books, plus English-language books from many countries.</p>
-      <p>Descriptions will come from English Wikipedia, the same way as the movies.</p>
-    </div>
-  </section>
-  <section id="panel-songs" hidden>
-    <div class="soonbox">
-      <h2>Songs are on the way</h2>
-      <p>This section isn't built yet. It will suggest Indian songs from 2000 onwards, showing just the song title and artist.</p>
-      <p>We're still choosing a free, openly licensed song dataset.</p>
+      <h2 id="nb-title">Not built yet</h2>
+      <p id="nb-text"></p>
     </div>
   </section>
 
   <footer>
-    Film facts come from <a href="https://www.wikidata.org">Wikidata</a> (CC0). Descriptions come from
-    <a href="https://en.wikipedia.org">English Wikipedia</a>, written by Wikipedia contributors and licensed
-    <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Each title links to its article.
+    Movie and book facts come from <a href="https://www.wikidata.org">Wikidata</a> (CC0). Movie and book
+    descriptions come from <a href="https://en.wikipedia.org">English Wikipedia</a>, written by Wikipedia
+    contributors and licensed <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>;
+    each title links to its article. Song titles and artists come from
+    <a href="https://musicbrainz.org">MusicBrainz</a> (CC0; tags CC BY-NC-SA 3.0). Only titles and
+    artists are shown: no lyrics, no audio.
   </footer>
 </main>
 
 <script>
-const LANG_NAMES = {hi:"Hindi", ta:"Tamil", te:"Telugu", ml:"Malayalam", kn:"Kannada",
-                    bn:"Bengali", mr:"Marathi", pa:"Punjabi", en:"English"};
+// What each tab says and suggests.
+const DOMAIN_UI = {
+  movies: {noun: "movies", one: "movie", button: "Find movies",
+           placeholder: "How are you feeling? e.g. cosy mystery for a rainy evening",
+           about: "Bollywood (Hindi) and Hollywood (American) films, 2000 onwards.",
+           moods: ["Cosy mystery for a rainy evening", "Feel-good film after a bad day",
+                   "Edge-of-my-seat thriller", "Light romantic comedy", "Mind-bending sci-fi",
+                   "Something to watch with the whole family", "A good cry", "Scary but not too gory"]},
+  books:  {noun: "books", one: "book", button: "Find books",
+           placeholder: "What do you want to read? e.g. slow, beautiful story about family and memory",
+           about: "Indian books, plus well-known English-language books from many countries, 2000 onwards.",
+           moods: ["A gripping crime story I can't put down", "Moving story about family and memory",
+                   "Funny and light for a holiday", "Epic fantasy world", "Life in a small Indian town",
+                   "Dark dystopian future", "True story that inspires", "Love story with a sad ending"]},
+  songs:  {noun: "songs", one: "song", button: "Find songs",
+           placeholder: "What's the mood? e.g. romantic songs for a long drive",
+           about: "Indian songs from 2000 onwards. Film songs are matched through their film's story, so you get songs from films that fit the mood.",
+           moods: ["Romantic songs for a long drive", "Party songs for a wedding", "Sad songs after a breakup",
+                   "Songs about friendship", "Patriotic and inspiring", "Punjabi dance hits",
+                   "Sufi and soulful", "Songs from feel-good college films"]},
+};
 const METHOD_NAMES = {hybrid:"Best match (recommended)", hybrid_rerank:"Best match + re-ranking (slower)",
                       emb_short:"Meaning only (summary)", emb_chunks:"Meaning only (plot passages)",
                       bm25:"Exact words only"};
-const MOODS = ["Cosy mystery for a rainy evening", "Feel-good film after a bad day",
-               "Edge-of-my-seat thriller", "Light romantic comedy", "Mind-bending sci-fi",
-               "Something to watch with the whole family", "A good cry", "Scary but not too gory"];
-// A thin coloured band on each card, picked from the film's main genre.
+// A thin coloured band on each card, picked from the main genre.
 const GENRE_COLOURS = {horror:"#5b3f8c", thriller:"#2f4f6f", crime:"#3d4a5c", mystery:"#46607a",
                        comedy:"#e0a526", romance:"#d65a7a", drama:"#b5673f", action:"#c0392b",
                        "sci-fi":"#2a8c8c", fantasy:"#7d5bbf", family:"#5aa55a", animation:"#3fa0d6",
                        musical:"#d6763f", adventure:"#4d8f3a", biography:"#8a7a5a", history:"#8a6a4a",
-                       war:"#6a6a5a", sports:"#2d8a5a", documentary:"#777"};
-const ERAS = [["Any time", null, null], ["2020s", 2020, 2029], ["2010s", 2010, 2019]];
+                       war:"#6a6a5a", sports:"#2d8a5a", documentary:"#777", pop:"#d65a7a",
+                       "hip hop":"#3d4a5c", sufi:"#b5673f", electronic:"#2a8c8c", filmi:"#e0a526"};
+const ERAS = [["Any time", null, null], ["2020s", 2020, 2029], ["2010s", 2010, 2019], ["2000s", 2000, 2009]];
 
 const $ = (id) => document.getElementById(id);
-const state = {lastSearch: null};
+const state = {domain: "movies", built: ["movies"], groups: {}, lastSearch: null};
 
 function el(tag, text, cls) {      // build elements with textContent (no HTML injection)
   const e = document.createElement(tag);
@@ -222,12 +254,30 @@ function chip(label, pressed) {
 }
 
 /* ---------- Tabs ---------- */
-function showTab(name) {
+async function showTab(name) {
+  state.domain = name;
   for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", t.dataset.tab === name);
-  for (const p of ["movies", "books", "songs"]) $("panel-" + p).hidden = p !== name;
+  const ui = DOMAIN_UI[name];
+  const built = state.built.includes(name);
+  $("panel").hidden = !built; $("notbuilt").hidden = built;
+  if (!built) {
+    $("nb-title").textContent = `${ui.noun[0].toUpperCase() + ui.noun.slice(1)} aren't ready yet`;
+    $("nb-text").textContent = `The ${ui.noun} data hasn't been built on this computer. ${ui.about}`;
+    return;
+  }
+  $("q").placeholder = ui.placeholder; $("go").textContent = ui.button; $("about").textContent = ui.about;
+  $("moods").replaceChildren();
+  for (const m of ui.moods) {
+    const b = chip(m); b.onclick = () => { $("q").value = m; search(); };
+    $("moods").append(b);
+  }
+  $("results").replaceChildren(); $("status").replaceChildren(); state.lastSearch = null;
+  document.body.classList.remove("searched");
+  await loadOptions(name).catch(err => setStatus("Couldn't load the filters: " + err.message));
 }
-for (const t of document.querySelectorAll(".tab")) t.onclick = () => { showTab(t.dataset.tab); history.replaceState(null, "", "#" + t.dataset.tab); };
-if (["#books", "#songs"].includes(location.hash)) showTab(location.hash.slice(1));
+for (const t of document.querySelectorAll(".tab")) t.onclick = () => {
+  history.replaceState(null, "", "#" + t.dataset.tab); showTab(t.dataset.tab);
+};
 
 /* ---------- Filters ---------- */
 $("ftoggle").onclick = () => {
@@ -241,17 +291,25 @@ function setEra(min, max) {
   for (const b of $("eras").children) b.setAttribute("aria-pressed", b.dataset.min == (min ?? "") && b.dataset.max == (max ?? ""));
 }
 
-async function loadOptions() {
-  const o = await (await fetch("/api/options")).json();
+async function loadOptions(domain) {
+  const res = await fetch("/api/options?domain=" + domain);
+  const o = await res.json();
+  if (!res.ok) throw new Error(o.detail || res.status);
+  $("method").replaceChildren(); $("genre").replaceChildren(new Option("Any genre", ""));
+  $("langs").replaceChildren();
   for (const m of o.methods) $("method").append(new Option(METHOD_NAMES[m] || m, m, m === "hybrid", m === "hybrid"));
   for (const g of o.genres) $("genre").append(new Option(g[0].toUpperCase() + g.slice(1), g));
   $("ymin").placeholder = o.year_min; $("ymax").placeholder = o.year_max;
-  $("ymin").min = $("ymax").min = o.year_min; $("ymin").max = $("ymax").max = o.year_max;
-  for (const l of o.languages) {
-    const b = chip(LANG_NAMES[l] || l, false); b.dataset.lang = l;
+  $("glabel").textContent = o.group_label;
+  state.groups = {};
+  for (const g of o.groups) {
+    state.groups[g.code] = g.label;
+    const b = chip(g.label, false); b.dataset.lang = g.code;
     b.onclick = () => b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") !== "true");
     $("langs").append(b);
   }
+  setEra(null, null);
+  $("about").textContent = `${DOMAIN_UI[domain].about} (${o.count.toLocaleString()} ${DOMAIN_UI[domain].noun})`;
 }
 
 for (const [label, min, max] of ERAS) {
@@ -268,13 +326,9 @@ $("clear").onclick = () => {
   setEra(null, null); $("genre").value = ""; $("method").value = "hybrid";
 };
 
-for (const m of MOODS) {
-  const b = chip(m); b.onclick = () => { $("q").value = m; search(); };
-  $("moods").append(b);
-}
-
 /* ---------- Results ---------- */
 function card(r) {
+  const ui = DOMAIN_UI[state.domain];
   const c = el("article", undefined, "card");
   const band = el("div", undefined, "band");
   band.style.background = GENRE_COLOURS[(r.genres || [])[0]] || "var(--line)";
@@ -282,7 +336,8 @@ function card(r) {
 
   const body = el("div", undefined, "body");
   body.append(el("h2", r.title));
-  body.append(el("div", `${r.year} · ${LANG_NAMES[r.language] || r.language}`, "meta"));
+  if (r.creator) body.append(el("div", (state.domain === "books" ? "by " : "") + r.creator, "meta"));
+  body.append(el("div", [r.year, state.groups[r.language] || r.language, r.subtitle].filter(Boolean).join(" · "), "meta"));
 
   const genres = (r.genres_fine && r.genres_fine.length ? r.genres_fine : r.genres) || [];
   if (genres.length) {
@@ -290,12 +345,12 @@ function card(r) {
     for (const g of genres.slice(0, 4)) tags.append(el("span", g, "tag"));
     body.append(tags);
   }
-  body.append(el("p", r.first_sentence, "desc"));
+  if (state.domain !== "songs") body.append(el("p", r.first_sentence, "desc"));
 
   if (r.why && (r.why.best_sentence || r.why.shared_words.length || r.why.matching_genres.length)) {
     const d = el("details", undefined, "why");
-    d.append(el("summary", "Why this film?"));
-    if (r.why.best_sentence) d.append(el("p", "Closest line in its description: “" + r.why.best_sentence + "”"));
+    d.append(el("summary", `Why this ${ui.one}?`));
+    if (r.why.best_sentence) d.append(el("p", (state.domain === "songs" ? "Closest line about it or its film: “" : "Closest line in its description: “") + r.why.best_sentence + "”"));
     if (r.why.matching_genres.length) d.append(el("p", "Matching genre: " + r.why.matching_genres.join(", ")));
     if (r.why.shared_words.length) d.append(el("p", "Words in common with your search: " + r.why.shared_words.join(", ")));
     body.append(d);
@@ -305,8 +360,14 @@ function card(r) {
   const actions = el("div", undefined, "actions");
   const more = el("button", "More like this", "btn primary"); more.type = "button";
   more.onclick = () => similar(r.id, r.title);
-  const wiki = el("a", "Read on Wikipedia ↗", "btn"); wiki.href = r.wiki_url; wiki.target = "_blank"; wiki.rel = "noopener";
-  actions.append(more, wiki);
+  const link = el("a", (r.link_label || "Read on Wikipedia") + " ↗", "btn");
+  link.href = r.wiki_url; link.target = "_blank"; link.rel = "noopener";
+  actions.append(more, link);
+  if (r.extra_url) {
+    const x = el("a", (r.extra_label || "More") + " ↗", "btn");
+    x.href = r.extra_url; x.target = "_blank"; x.rel = "noopener";
+    actions.append(x);
+  }
   c.append(actions);
   return c;
 }
@@ -349,26 +410,48 @@ function search(e) {
   e && e.preventDefault();
   const q = $("q").value.trim();
   if (!q) { $("q").focus(); return; }
-  const p = new URLSearchParams({q, method: $("method").value || "hybrid", k: 12, why: true});
+  const d = state.domain;
+  const p = new URLSearchParams({q, domain: d, method: $("method").value || "hybrid", k: 12, why: true});
   if ($("genre").value) p.append("genre", $("genre").value);
   if ($("ymin").value) p.append("year_min", $("ymin").value);
   if ($("ymax").value) p.append("year_max", $("ymax").value);
   for (const b of $("langs").querySelectorAll('[aria-pressed="true"]')) p.append("lang", b.dataset.lang);
   for (const b of $("moods").children) b.setAttribute("aria-pressed", b.textContent === q);
   const url = "/api/search?" + p;
-  const label = d => `${d.count} movies for “${q}”`;
+  const label = r => `${r.count} ${DOMAIN_UI[d].noun} for “${q}”`;
   state.lastSearch = {q, url, label};
   run(url, label);
 }
 
 function similar(id, title) {
-  run(`/api/similar/${encodeURIComponent(id)}?k=12`, () => `Movies like “${title}”`, true);
+  const d = state.domain;
+  run(`/api/similar/${encodeURIComponent(id)}?domain=${d}&k=12`, () => `${DOMAIN_UI[d].noun[0].toUpperCase() + DOMAIN_UI[d].noun.slice(1)} like “${title}”`, true);
   window.scrollTo({top: 0, behavior: "smooth"});
 }
 
 $("f").addEventListener("submit", search);
-loadOptions().catch(err => setStatus("Couldn't load the filters: " + err.message + ". Is the server running?"));
-$("q").focus();
+
+/* ---------- Light / dark switch (the choice is remembered in this browser) ---------- */
+function paintThemeButton() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  // The button shows what you switch TO.
+  $("theme-icon").textContent = dark ? "☀" : "☾";
+  $("theme-text").textContent = dark ? "Light mode" : "Dark mode";
+}
+$("theme").onclick = () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("theme", next); } catch (e) { /* private window: just don't remember */ }
+  paintThemeButton();
+};
+paintThemeButton();
+
+(async function start() {
+  try { state.built = (await (await fetch("/api/domains")).json()).built; } catch (e) { /* keep default */ }
+  const first = ["#books", "#songs"].includes(location.hash) ? location.hash.slice(1) : "movies";
+  await showTab(first);
+  $("q").focus();
+})();
 </script>
 </body>
 </html>

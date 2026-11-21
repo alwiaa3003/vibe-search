@@ -62,3 +62,12 @@ def test_write_report_runs_on_toy_data(tmp_path, monkeypatch):
 def test_describe_uses_whole_sentences():
     d = describe(FILMS[0], max_words=12)
     assert d.startswith(FILMS[0]["first_sentence"]) and d.endswith(".")
+
+
+def test_query_file_saved_by_excel_still_reads(tmp_path):
+    # Excel adds a byte-order mark (BOM) when it saves a CSV as UTF-8.
+    from pool import read_queries
+    p = tmp_path / "q.csv"
+    p.write_text("id,use,kind,query,notes\nq1,yes,mood,sad film,\nq2,no,mood,x,\n",
+                 encoding="utf-8-sig")
+    assert [q["id"] for q in read_queries(p)] == ["q1"]

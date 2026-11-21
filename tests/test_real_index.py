@@ -21,12 +21,12 @@ def test_real_search_returns_10(real, method):
 
 
 def test_real_filters(real):
-    res = real.search("family drama", method="hybrid", k=10, languages=["ml"],
+    res = real.search("family drama", method="hybrid", k=10, languages=["hi"],
                       year_min=2015, year_max=2018)
     assert res
     for i, _ in res:
         f = real.films[i]
-        assert f["language"] == "ml" and 2015 <= f["year"] <= 2018
+        assert f["language"] == "hi" and 2015 <= f["year"] <= 2018
 
 
 def test_real_chunks_start_with_prefix(real):

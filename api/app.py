@@ -1,13 +1,14 @@
-"""Phase 6: FastAPI backend + the single HTML search page.
+"""FastAPI backend + the single HTML search page.
 
 Run from the project folder:
-  uvicorn api.app:app --port 8000
+  python -m uvicorn api.app:app --port 8000
 Then open http://127.0.0.1:8000 in a browser.
-Endpoints:
-  GET /api/search?q=...&method=hybrid&k=10&year_min=&year_max=&lang=hi&lang=ta&genre=comedy&why=true
-  GET /api/similar/{film_id}?k=10
-  GET /api/film/{film_id}
-  GET /api/options     (languages, genres, methods, year range for the page)
+Endpoints (domain = movies | books | songs, default movies):
+  GET /api/search?domain=movies&q=...&method=hybrid&k=10&year_min=&year_max=&lang=hi&genre=comedy&why=true
+  GET /api/similar/{item_id}?domain=movies&k=10
+  GET /api/film/{item_id}?domain=movies      (full text of one item)
+  GET /api/options?domain=movies             (groups, genres, methods, year range)
+  GET /api/domains                           (which domains are built)
   GET /api/health
 """
 import sys
@@ -21,26 +22,36 @@ from fastapi.responses import FileResponse
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))  # engine.py and friends live there
 
+from domains import DOMAINS  # noqa: E402
 from engine import METHODS  # noqa: E402
 
 
 def create_app(engine_factory):
-    """Build the app. `engine_factory()` returns an Engine (tests pass a fake one)."""
+    """Build the app. `engine_factory()` returns {domain: Engine}, or a single
+    Engine, which is then used as "movies" (the tests pass a fake one)."""
     state = {}
 
-    def eng():
-        if "engine" not in state:  # load once, at startup (or first request)
+    def engines():
+        if "engines" not in state:  # load once, at startup (or first request)
             t = time.time()
-            state["engine"] = engine_factory()
+            e = engine_factory()
+            state["engines"] = e if isinstance(e, dict) else {"movies": e}
             state["load_seconds"] = round(time.time() - t, 2)
-        return state["engine"]
+        return state["engines"]
+
+    def eng(domain):
+        if domain not in DOMAINS:
+            raise HTTPException(400, f"domain must be one of {list(DOMAINS)}")
+        if domain not in engines():
+            raise HTTPException(404, f"the {domain} section isn't built yet")
+        return engines()[domain]
 
     @asynccontextmanager
     async def lifespan(app):
-        eng()  # load the model and vectors before serving requests
+        engines()  # load the model and vectors before serving requests
         yield
 
-    app = FastAPI(title="Vibe search", version="0.1", lifespan=lifespan)
+    app = FastAPI(title="Vibe search", version="0.2", lifespan=lifespan)
 
     @app.get("/")
     def page():
@@ -48,27 +59,40 @@ def create_app(engine_factory):
 
     @app.get("/api/health")
     def health():
-        return {"ok": True, "films": len(eng().films),
+        e = engines()
+        return {"ok": True, "films": len(e["movies"].films) if "movies" in e else 0,
+                "items": {d: len(x.films) for d, x in e.items()},
                 "load_seconds": state.get("load_seconds")}
 
+    @app.get("/api/domains")
+    def domains():
+        return {"built": list(engines()), "all": list(DOMAINS)}
+
     @app.get("/api/options")
-    def options():
-        e = eng()
+    def options(domain: str = "movies"):
+        e = eng(domain)
         years = [f["year"] for f in e.films]
-        return {"methods": METHODS,
-                "languages": sorted({f["language"] for f in e.films}),
+        conf = DOMAINS[domain]
+        present = sorted({f["language"] for f in e.films},
+                         key=lambda c: list(conf["groups"]).index(c)
+                         if c in conf["groups"] else 99)
+        return {"domain": domain, "methods": METHODS,
+                "languages": present,
+                "groups": [{"code": c, "label": conf["groups"].get(c, c)} for c in present],
+                "group_label": conf["group_label"],
                 "genres": sorted({g for f in e.films for g in f["genres"]}),
-                "year_min": min(years), "year_max": max(years)}
+                "year_min": min(years), "year_max": max(years), "count": len(e.films)}
 
     @app.get("/api/search")
     def search(q: str = Query(..., min_length=1, max_length=300),
+               domain: str = "movies",
                method: str = "hybrid", k: int = Query(10, ge=1, le=50),
                year_min: int | None = None, year_max: int | None = None,
                lang: list[str] | None = Query(None), genre: list[str] | None = Query(None),
                why: bool = False):
         if method not in METHODS:
             raise HTTPException(400, f"method must be one of {METHODS}")
-        e = eng()
+        e = eng(domain)
         t = time.time()
         results = e.search(q, method=method, k=k, year_min=year_min, year_max=year_max,
                            languages=lang, genres=genre)
@@ -76,32 +100,32 @@ def create_app(engine_factory):
         if why and results:
             for card, w in zip(cards, e.why_many(q, [i for i, _ in results])):
                 card["why"] = w
-        return {"query": q, "method": method, "count": len(cards),
+        return {"query": q, "domain": domain, "method": method, "count": len(cards),
                 "took_ms": round((time.time() - t) * 1000), "results": cards}
 
     @app.get("/api/similar/{film_id}")
-    def similar(film_id: str, k: int = Query(10, ge=1, le=50)):
-        e = eng()
+    def similar(film_id: str, domain: str = "movies", k: int = Query(10, ge=1, le=50)):
+        e = eng(domain)
         if film_id not in e.id_to_idx:
-            raise HTTPException(404, "unknown film id")
+            raise HTTPException(404, "unknown id")
         src = e.film_card(e.id_to_idx[film_id])
         return {"film": src, "results": [e.film_card(i, s)
                                          for i, s in e.more_like_this(film_id, k=k)]}
 
     @app.get("/api/film/{film_id}")
-    def film(film_id: str):
-        e = eng()
+    def film(film_id: str, domain: str = "movies"):
+        e = eng(domain)
         if film_id not in e.id_to_idx:
-            raise HTTPException(404, "unknown film id")
+            raise HTTPException(404, "unknown id")
         f = e.films[e.id_to_idx[film_id]]
         return {**e.film_card(e.id_to_idx[film_id]), "lead": f["lead"], "plot": f["plot"]}
 
     return app
 
 
-def _real_engine():
-    from engine import load_engine
-    return load_engine(ROOT)
+def _real_engines():
+    from engine import load_engines
+    return load_engines(ROOT)
 
 
-app = create_app(_real_engine)
+app = create_app(_real_engines)

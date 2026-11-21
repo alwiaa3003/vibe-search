@@ -1,4 +1,4 @@
-"""Phase 1, step 3: clean the fetched data and report honest coverage stats.
+"""Movies, step 3: clean the fetched data and report honest coverage stats.
 
 Each kept film stores separate fields: title, genres, first lead sentence,
 full lead, full plot, language, year, Wikipedia title (+ a few extras).
@@ -21,8 +21,8 @@ from text_utils import (coarse_genres, display_title, normalise_genre,
                         sentences, tidy, words)
 
 MIN_PLOT_WORDS, MIN_LEAD_WORDS = 40, 50
-INDIAN = {"hi", "ta", "te", "ml", "kn", "bn", "mr", "pa"}
-LANG_ORDER = ["hi", "ta", "te", "ml", "kn", "bn", "mr", "pa", "en"]
+INDIAN = {"hi"}               # groups: hi = Bollywood (Hindi), us = American
+LANG_ORDER = ["hi", "us"]
 OUT = Path("data/clean/films.jsonl")
 
 
@@ -100,7 +100,7 @@ def report(wd, wp, rows, reason):
     lang_of = {f["qid"]: f["found_via"] for f in wd["films"]}
     cand = Counter(f["found_via"] for f in wd["films"])
     print(f"Wikidata fetched {wd['fetched']}; failed queries: "
-          f"{wd['failed_queries'] or 'none'}; English min sitelinks: "
+          f"{wd['failed_queries'] or 'none'}; US min sitelinks: "
           f"{wd.get('min_sitelinks')}")
     print(f"Candidates {len(wd['films'])}, selected {len(wp['selected'])}, "
           f"kept {len(rows)}\n")
@@ -120,9 +120,9 @@ def report(wd, wp, rows, reason):
 
     ind = [r for r in rows if r["indian"]]
     eng = [r for r in rows if not r["indian"]]
-    print(f"\nKept: Indian {len(ind)} ({pct(len(ind), len(rows))}), "
-          f"English {len(eng)} ({pct(len(eng), len(rows))})")
-    for name, group in (("Indian", ind), ("English", eng)):
+    print(f"\nKept: Hindi {len(ind)} ({pct(len(ind), len(rows))}), "
+          f"American {len(eng)} ({pct(len(eng), len(rows))})")
+    for name, group in (("Hindi", ind), ("American", eng)):
         with_plot = [words(r["plot"]) for r in group if r["plot"]]
         no_genre = sum(1 for r in group if not r["genres"])
         print(f"\n{name}: has plot {len(with_plot)}/{len(group)} "

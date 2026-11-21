@@ -53,7 +53,14 @@ def get_json(source, url, params, max_tries=5):
             time.sleep(wait)
         start = time.time()
 
-        resp = _session.get(url, params=params, timeout=90)
+        try:
+            resp = _session.get(url, params=params, timeout=90)
+        except (requests.ConnectionError, requests.Timeout) as e:
+            # Network blip (Wi-Fi drop, reset connection): wait, then retry.
+            _last_request = time.time()
+            print(f"  network error ({type(e).__name__}), waiting {10 * 2 ** attempt}s")
+            time.sleep(10 * 2 ** attempt)
+            continue
         _last_request = time.time()
         # Robot policy: "if your request takes more than 1 second to serve,
         # please wait 5 seconds before making another request."
