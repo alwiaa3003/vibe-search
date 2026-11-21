@@ -7,16 +7,18 @@
 <style>
   /* ---- Colours (light, then dark) ---- */
   :root {
-    --bg:#f4f5fb; --fg:#1b1e2e; --muted:#5f6480; --card:#ffffff; --line:#e0e3f0;
-    --accent:#4f5bd5; --accent-soft:#e8eaff; --accent-fg:#ffffff; --chip:#eceef7;
-    --glow: rgba(79,91,213,.12);
-    --shadow: 0 1px 2px rgba(20,24,60,.05), 0 6px 20px rgba(20,24,60,.06);
+    /* "Velvet & Gold": burgundy accent on warm paper (light mode) */
+    --bg:#faf5f2; --fg:#2a1418; --muted:#7a6064; --card:#ffffff; --line:#eedfdb;
+    --accent:#9e2a44; --accent-soft:#f7e3e7; --accent-fg:#ffffff; --chip:#f3e8e5;
+    --glow: rgba(158,42,68,.10);
+    --shadow: 0 1px 2px rgba(60,20,30,.05), 0 6px 20px rgba(60,20,30,.06);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg:#0e1120; --fg:#e8eaf6; --muted:#9aa0bb; --card:#171b2e; --line:#272d4a;
-      --accent:#8d9bff; --accent-soft:#222a52; --accent-fg:#0e1120; --chip:#1c2138;
-      --glow: rgba(120,110,255,.20);
+      /* gold accent on burgundy-black, like a cinema at night */
+      --bg:#150c10; --fg:#f3e9e4; --muted:#b49c9f; --card:#22141a; --line:#3a232b;
+      --accent:#e3b45c; --accent-soft:#3a2a1a; --accent-fg:#1a0f0a; --chip:#2a1820;
+      --glow: rgba(170,40,70,.28);
       --shadow: 0 6px 24px rgba(0,0,0,.25);
     }
   }
