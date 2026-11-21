@@ -447,7 +447,12 @@ $("theme").onclick = () => {
 paintThemeButton();
 
 (async function start() {
-  try { state.built = (await (await fetch("/api/domains")).json()).built; } catch (e) { /* keep default */ }
+  try {
+    const res = await fetch("/api/domains");
+    const d = await res.json();
+    if (res.ok && Array.isArray(d.built)) state.built = d.built;
+    else setStatus("The server is an older version: restart it to get Books and Songs.");
+  } catch (e) { /* keep the default: movies only */ }
   const first = ["#books", "#songs"].includes(location.hash) ? location.hash.slice(1) : "movies";
   await showTab(first);
   $("q").focus();

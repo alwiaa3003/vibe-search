@@ -17,7 +17,7 @@ from collections import Counter
 from pathlib import Path
 
 from domains import DOMAINS
-from text_utils import GENRE_RULES, coarse_genres, sentences
+from text_utils import GENRE_RULES, coarse_genres, sentences, take_sentences
 
 OUT = Path("data/clean/songs.jsonl")
 FILM_FILES = [Path("data/clean/films.jsonl"), Path("data/interim/films_2010_9lang.jsonl")]
@@ -36,7 +36,8 @@ SONG_GENRE_RULES = GENRE_RULES + [
     ("filmi", "filmi"), ("bollywood", "filmi"), ("jazz", "jazz"), ("r&b", "r&b"),
     ("soul", "r&b"), ("ambient", "electronic"), ("acoustic", "acoustic"),
 ]
-MAX_TAGS = 25  # more tags than this on one single looks like tag spam
+MAX_TAGS = 25
+PLOT_WORDS = 250  # words of the film's plot kept per film song  # more tags than this on one single looks like tag spam
 
 
 def load_films():
@@ -82,7 +83,10 @@ def film_song_rows(raw, films):
             "genres": f["genres"], "genres_fine": f["genres_fine"],
             "first_sentence": first,
             "lead": first + " About the film: " + film_lead,
-            "plot": f["plot"] or " ".join(sentences(f["lead"])[3:]),
+            # Only the start of the film's story: every song of a film shares it,
+            # so the full plot would be embedded ~6 times for no gain.
+            "plot": " ".join(take_sentences(sentences(f["plot"]) or sentences(f["lead"])[3:],
+                                            PLOT_WORDS)),
             "creator": artist, "subtitle": f"From the film {f['title']} ({f['year']})",
             "group_id": f["id"], "kind": "film song",
             "wiki_url": "https://musicbrainz.org/recording/" + s["recording_id"],
@@ -92,10 +96,22 @@ def film_song_rows(raw, films):
     return rows, dropped
 
 
+PROMO = re.compile(r"official|best of|songs|new release|video")
+
+
 def clean_tags(tags, title, artist):
+    """Keep real style words; drop self-promotion tags such as
+    'pankaj kumar official' or 'best of <artist>'."""
     names = {title.lower(), artist.lower()}
-    out = [t.lower().strip() for t in tags
-           if 2 <= len(t) <= 30 and re.search(r"[a-z]", t.lower()) and t.lower() not in names]
+    name_words = {w for w in re.findall(r"[a-z]+", artist.lower()) if len(w) >= 4}
+    out = []
+    for t in tags:
+        t = t.lower().strip()
+        if not (2 <= len(t) <= 30 and re.search(r"[a-z]", t)) or t in names:
+            continue
+        if PROMO.search(t) or name_words & set(re.findall(r"[a-z]+", t)):
+            continue
+        out.append(t)
     return list(dict.fromkeys(out))[:8]
 
 

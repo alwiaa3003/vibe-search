@@ -4,9 +4,12 @@ Which books (user's choice, 2026-11-22): published 2000-2026, with an English
 Wikipedia article, instance of novel / literary work / book / written work.
   - Indian: the author is a citizen of India, OR the book's language is an
     Indian language. All of them are kept.
-  - International: books in English (language of work, P407) whose author is
-    not Indian. Per year, the BOOKS_PER_YEAR with the most Wikipedia language
-    editions (sitelinks, a rough fame signal) are kept.
+  - International: NOVELS in English (form of creative work P7937 = novel,
+    language of work P407 = English) whose author is not Indian. Per year, the
+    BOOKS_PER_YEAR with the most Wikipedia language editions (sitelinks, a rough
+    fame signal) are kept. (Asking for every English "book"/"literary work" per
+    year timed out on Wikidata; starting from "form: novel" takes ~10 s a year
+    and, measured for 2005, misses only 2 memoir/non-fiction items.)
 Same polite, cached client as the movies (one request at a time).
 Output: data/interim/wikidata_books.json + data/interim/wikipedia_books.json
 Run:  python scripts/fetch_books.py
@@ -61,7 +64,7 @@ INNER_INDIAN_LANG = ("SELECT DISTINCT ?book WHERE { hint:Query hint:optimizer \"
                      "VALUES ?lang { " + INDIAN_LANGS + " } ?book wdt:P407 ?lang . "
                      "VALUES ?t { " + TYPES + " } ?book wdt:P31 ?t . " + YEAR_FILTER + " }")
 INNER_ENGLISH = ("SELECT DISTINCT ?book WHERE { hint:Query hint:optimizer \"None\" . "
-                 "VALUES ?t { " + TYPES + " } ?book wdt:P31 ?t . " + YEAR_FILTER +
+                 "?book wdt:P7937 wd:Q8261 . " + YEAR_FILTER +
                  " ?book wikibase:sitelinks ?sl . FILTER(?sl >= %(min_sl)d) "
                  "?book wdt:P407 " + ENGLISH + " . }")
 

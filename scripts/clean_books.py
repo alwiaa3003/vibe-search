@@ -16,6 +16,13 @@ from text_utils import (BOOK_GENRE_RULES, coarse_genres, sentences, tidy, words)
 
 MIN_PLOT_WORDS, MIN_LEAD_WORDS = 40, 50
 OUT = Path("data/clean/books.jsonl")
+HISTORIC = {"British Raj", "Dominion of India", "East Pakistan", "Dominion of Pakistan",
+            "British India", "Bengal Presidency", "Kingdom of Great Britain",
+            "United Kingdom of Great Britain and Ireland", "Soviet Union", "Ceylon"}
+# First sentence of an article about a person ("X (born 1953) is ...",
+# "X (July 15, 1931 – February 24, 2020) was ...") or a fictional character.
+NOT_A_BOOK = re.compile(r"\(born\b|\(\s*[^()]*\b\d{4}\s*[–-]\s*[^()]*\d{4}\s*\)\s+(is|was)\b|"
+                        r"is a fictional character", re.I)
 
 
 def book_title(wiki_title):
@@ -54,12 +61,18 @@ def clean_all(wd, wp):
         else:
             reason[qid] = "too_short"
             continue
-        seen.add(t["title"])
         first = (sentences(lead) or [""])[0]
+        # Some Wikidata book items link to the AUTHOR's article (or a character's).
+        if (t["title"] in b["authors"] or NOT_A_BOOK.search(first)):
+            reason[qid] = "not_about_the_book"
+            continue
+        seen.add(t["title"])
         genres = coarse_genres(b["genres_raw"], BOOK_GENRE_RULES)
         if not genres:  # "... is a 2008 dystopian novel by ..." -> sci-fi
             genres = coarse_genres([first.split(" by ")[0]], BOOK_GENRE_RULES)
-        countries = [c for c in b["author_countries"]][:3]
+        # Wikidata keeps historical citizenships too; show modern ones if any.
+        modern = [c for c in b["author_countries"] if c not in HISTORIC]
+        countries = (modern or b["author_countries"])[:3]
         rows.append({
             "id": qid, "title": book_title(t["title"]), "wiki_title": t["title"],
             "wiki_url": "https://en.wikipedia.org/wiki/" + t["title"].replace(" ", "_"),
