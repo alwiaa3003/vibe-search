@@ -1,0 +1,25 @@
+# Pinned versions (Python 3.13, CPU only). Install: pip install -r requirements.txt
+# On Windows, the torch wheel from PyPI is the CPU-only build.
+
+# fetching data
+requests==2.34.2
+mwparserfromhell==0.7.2
+
+# embeddings, keyword search, re-ranking
+sentence-transformers==6.3.0
+transformers==5.24.0
+tokenizers==0.23.3
+torch==2.15.0
+numpy==2.5.5
+rank-bm25==0.2.2
+
+# API
+fastapi==0.165.0
+starlette==1.10.0
+pydantic==2.14.4
+uvicorn==0.54.0
+
+# tests and measurement
+pytest==9.2.0
+httpx==0.28.1
+psutil==7.2.2

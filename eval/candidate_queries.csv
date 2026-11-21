@@ -1,0 +1,41 @@
+id,use,kind,query,notes
+q01,yes,mood,cosy mystery for a rainy evening,the original example
+q02,yes,mood,feel-good film that will cheer me up after a bad day,
+q03,yes,mood,slow melancholic film about loneliness,
+q04,yes,mood,tense edge-of-the-seat thriller,
+q05,yes,mood,heartwarming story about friendship,
+q06,yes,mood,dark and disturbing psychological horror,
+q07,yes,mood,light romantic comedy with a happy ending,
+q08,yes,mood,inspiring underdog sports story,
+q09,yes,situation,something to watch with my grandparents,family-friendly; judge suitability
+q10,yes,situation,film for a long train journey that keeps me hooked,vague on purpose
+q11,yes,situation,movie night with friends who love big action,
+q12,yes,situation,first date movie that is not too heavy,
+q13,yes,situation,film to watch with kids on a holiday,
+q14,yes,situation,something mind-bending to discuss afterwards,
+q15,yes,vibe,road trip with friends finding themselves,
+q16,yes,vibe,small-town life with quirky characters,
+q17,yes,vibe,revenge story with a slow burn,
+q18,yes,vibe,heist with a clever twist,
+q19,yes,vibe,coming-of-age story about first love in school,
+q20,yes,vibe,survival against nature,
+q21,yes,indian,big family wedding chaos and drama,Indian context
+q22,yes,indian,village politics and caste conflict,Indian context; sensitive topic
+q23,yes,indian,college life and friendship in Kerala,Indian context; place name
+q24,yes,indian,mass hero fighting a corrupt politician,Indian context; "mass" film idiom
+q25,yes,indian,festival season family reunion in a small town,Indian context
+q26,yes,indian,struggles of a middle-class family in Mumbai,Indian context; place name
+q27,yes,indian,cricket and patriotism,Indian context
+q28,yes,indian,ghost story set in an old mansion in a village,Indian context; horror
+q29,yes,indian,gangsters and the underworld in the 90s,Indian context
+q30,yes,indian,father and son relationship drama,
+q31,yes,hard,a film that feels like a warm hug,figurative; no literal words to match
+q32,yes,hard,nothing too violent but still exciting,negation: keyword search tends to fail
+q33,yes,hard,like a whodunit but set in space,mixed genres
+q34,yes,hard,sad but hopeful ending,contrast in one query
+q35,yes,hard,films where the city itself is a character,abstract
+q36,yes,hard,an animated film that adults will enjoy more than kids,
+q37,yes,hard,time loop,very short; concept query
+q38,yes,hard,AI or robots questioning what it means to be human,
+q39,no,hard,quiet film with almost no dialogue,hard to judge from Wikipedia text
+q40,no,hard,movie with a great soundtrack to sing along,soundtrack quality isn't in the plot text

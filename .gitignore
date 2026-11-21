@@ -1,0 +1,19 @@
+# Secrets (old TMDB key: never commit)
+.env
+
+# Python / tools
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Downloaded and generated data (scripts regenerate it)
+data/
+eval/labelling_sheet*.csv
+eval/pool_info.json
+
+# Working notes and plans (kept local)
+CLAUDE.md
+PLAN.md
+PROGRESS.md
+MORNING.md
+BLOCKED.md

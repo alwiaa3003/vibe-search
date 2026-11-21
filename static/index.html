@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vibe search</title>
+<style>
+  /* ---- Colours (light, then dark) ---- */
+  :root {
+    --bg:#f7f4ee; --fg:#1f1d1a; --muted:#6b675f; --card:#ffffff; --line:#e6e1d6;
+    --accent:#c2562d; --accent-soft:#f6e3d9; --accent-fg:#ffffff; --chip:#efebe3;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#141311; --fg:#eeebe4; --muted:#a6a197; --card:#1e1c19; --line:#34312b;
+      --accent:#ec8a5f; --accent-soft:#3a2519; --accent-fg:#1a1410; --chip:#2a2723;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 28px 16px 56px; }
+  a { color: var(--accent); }
+  button { font: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- Header + tabs ---- */
+  header { text-align: center; margin-bottom: 22px; }
+  h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 600; font-size: 2.3rem; margin: 0; letter-spacing: -.01em; }
+  .tagline { color: var(--muted); margin: 4px 0 18px; }
+  .tabs { display: inline-flex; gap: 4px; padding: 4px; background: var(--chip); border-radius: 999px; }
+  .tab { border: 0; background: none; color: var(--muted); padding: 8px 20px; border-radius: 999px; font-weight: 600; }
+  .tab[aria-selected="true"] { background: var(--card); color: var(--fg); box-shadow: var(--shadow); }
+  .tab .soon { font-weight: 500; font-size: .72rem; color: var(--muted); margin-left: 4px; }
+
+  /* ---- Search box ---- */
+  .searchbox { display: flex; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+               padding: 8px; box-shadow: var(--shadow); }
+  .searchbox input { flex: 1; min-width: 0; border: 0; background: none; color: var(--fg); font-size: 1.1rem; padding: 8px 10px; }
+  .searchbox input:focus { outline: none; }
+  .searchbox:focus-within { border-color: var(--accent); }
+  .go { border: 0; background: var(--accent); color: var(--accent-fg); font-weight: 700; padding: 10px 22px; border-radius: 11px; }
+  .go:disabled { opacity: .5; cursor: default; }
+
+  .hint { color: var(--muted); font-size: .9rem; margin: 16px 0 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: var(--card); color: var(--fg); padding: 6px 13px; border-radius: 999px; font-size: .92rem; }
+  .chip:hover { border-color: var(--accent); }
+  .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); font-weight: 600; }
+
+  /* ---- Filters ---- */
+  .filters-toggle { margin-top: 18px; border: 0; background: none; color: var(--accent); font-weight: 600; padding: 0; }
+  .filters { display: none; margin-top: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .filters.open { display: grid; gap: 14px; }
+  .frow > .label { font-size: .85rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .filters select, .filters input[type=number] { padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; }
+  .filters input[type=number] { width: 6.5em; }
+  .inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .clear { border: 0; background: none; color: var(--muted); text-decoration: underline; padding: 0; justify-self: start; }
+
+  /* ---- Status + results ---- */
+  #status { color: var(--muted); margin: 26px 0 12px; min-height: 1.5em; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .back { border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 999px; padding: 4px 12px; font-size: .9rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--shadow); }
+  .band { height: 6px; }
+  .body { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .card h2 { font-size: 1.12rem; margin: 0; line-height: 1.3; }
+  .meta { color: var(--muted); font-size: .88rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag { background: var(--chip); border-radius: 6px; padding: 1px 8px; font-size: .8rem; color: var(--muted); }
+  .desc { margin: 0; font-size: .95rem; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .why { font-size: .88rem; background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; }
+  .why summary { cursor: pointer; font-weight: 600; }
+  .why p { margin: 6px 0 0; }
+  .actions { display: flex; gap: 8px; padding: 0 16px 14px; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--line); background: none; color: var(--fg); padding: 6px 12px; border-radius: 9px; font-size: .9rem; text-decoration: none; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+  .skeleton { height: 190px; border-radius: 14px; background: linear-gradient(90deg, var(--chip), var(--card), var(--chip));
+              background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+  .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
+  .soonbox { background: var(--card); border: 1px dashed var(--line); border-radius: 16px; padding: 28px 22px; text-align: center; }
+  .soonbox h2 { font-family: Georgia, serif; font-weight: 600; margin: 0 0 6px; }
+  .soonbox p { color: var(--muted); margin: 6px auto; max-width: 560px; }
+
+  footer { margin-top: 44px; color: var(--muted); font-size: .84rem; border-top: 1px solid var(--line); padding-top: 14px; }
+  @media (max-width: 520px) {
+    h1 { font-size: 1.9rem; }
+    .tab { padding: 8px 13px; }
+    .go { padding: 10px 14px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Vibe search</h1>
+    <p class="tagline">Describe a mood or a moment. Get something that fits.</p>
+    <div class="tabs" role="tablist" aria-label="What to search">
+      <button class="tab" role="tab" data-tab="movies" aria-selected="true">Movies</button>
+      <button class="tab" role="tab" data-tab="books" aria-selected="false">Books <span class="soon">soon</span></button>
+      <button class="tab" role="tab" data-tab="songs" aria-selected="false">Songs <span class="soon">soon</span></button>
+    </div>
+  </header>
+
+  <!-- ===== Movies ===== -->
+  <section id="panel-movies">
+    <form id="f" class="searchbox" role="search">
+      <input id="q" type="text" autocomplete="off" placeholder="How are you feeling? e.g. cosy mystery for a rainy evening" aria-label="Describe the movie you want">
+      <button class="go" type="submit" id="go">Find movies</button>
+    </form>
+
+    <div class="hint">Not sure? Try one of these:</div>
+    <div class="chips" id="moods"></div>
+
+    <button class="filters-toggle" id="ftoggle" type="button" aria-expanded="false">Filters ▾</button>
+    <div class="filters" id="filters">
+      <div class="frow">
+        <div class="label">Language</div>
+        <div class="chips" id="langs"></div>
+      </div>
+      <div class="frow">
+        <div class="label">When</div>
+        <div class="chips" id="eras"></div>
+        <div class="inline" style="margin-top:8px">
+          <span class="meta">or from</span><input id="ymin" type="number" aria-label="From year">
+          <span class="meta">to</span><input id="ymax" type="number" aria-label="To year">
+        </div>
+      </div>
+      <div class="frow">
+        <div class="label">Genre</div>
+        <select id="genre" aria-label="Genre"><option value="">Any genre</option></select>
+      </div>
+      <div class="frow">
+        <div class="label">Search method (for the curious)</div>
+        <select id="method" aria-label="Search method"></select>
+      </div>
+      <button class="clear" id="clear" type="button">Clear all filters</button>
+    </div>
+
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="results" class="grid"></div>
+  </section>
+
+  <!-- ===== Books / Songs (not built yet) ===== -->
+  <section id="panel-books" hidden>
+    <div class="soonbox">
+      <h2>Books are on the way</h2>
+      <p>This section isn't built yet. It will search books from 2000 onwards: Indian books, plus English-language books from many countries.</p>
+      <p>Descriptions will come from English Wikipedia, the same way as the movies.</p>
+    </div>
+  </section>
+  <section id="panel-songs" hidden>
+    <div class="soonbox">
+      <h2>Songs are on the way</h2>
+      <p>This section isn't built yet. It will suggest Indian songs from 2000 onwards, showing just the song title and artist.</p>
+      <p>We're still choosing a free, openly licensed song dataset.</p>
+    </div>
+  </section>
+
+  <footer>
+    Film facts come from <a href="https://www.wikidata.org">Wikidata</a> (CC0). Descriptions come from
+    <a href="https://en.wikipedia.org">English Wikipedia</a>, written by Wikipedia contributors and licensed
+    <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>. Each title links to its article.
+  </footer>
+</main>
+
+<script>
+const LANG_NAMES = {hi:"Hindi", ta:"Tamil", te:"Telugu", ml:"Malayalam", kn:"Kannada",
+                    bn:"Bengali", mr:"Marathi", pa:"Punjabi", en:"English"};
+const METHOD_NAMES = {hybrid:"Best match (recommended)", hybrid_rerank:"Best match + re-ranking (slower)",
+                      emb_short:"Meaning only (summary)", emb_chunks:"Meaning only (plot passages)",
+                      bm25:"Exact words only"};
+const MOODS = ["Cosy mystery for a rainy evening", "Feel-good film after a bad day",
+               "Edge-of-my-seat thriller", "Light romantic comedy", "Mind-bending sci-fi",
+               "Something to watch with the whole family", "A good cry", "Scary but not too gory"];
+// A thin coloured band on each card, picked from the film's main genre.
+const GENRE_COLOURS = {horror:"#5b3f8c", thriller:"#2f4f6f", crime:"#3d4a5c", mystery:"#46607a",
+                       comedy:"#e0a526", romance:"#d65a7a", drama:"#b5673f", action:"#c0392b",
+                       "sci-fi":"#2a8c8c", fantasy:"#7d5bbf", family:"#5aa55a", animation:"#3fa0d6",
+                       musical:"#d6763f", adventure:"#4d8f3a", biography:"#8a7a5a", history:"#8a6a4a",
+                       war:"#6a6a5a", sports:"#2d8a5a", documentary:"#777"};
+const ERAS = [["Any time", null, null], ["2020s", 2020, 2029], ["2010s", 2010, 2019]];
+
+const $ = (id) => document.getElementById(id);
+const state = {lastSearch: null};
+
+function el(tag, text, cls) {      // build elements with textContent (no HTML injection)
+  const e = document.createElement(tag);
+  if (text !== undefined && text !== null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+function chip(label, pressed) {
+  const b = el("button", label, "chip"); b.type = "button";
+  if (pressed !== undefined) b.setAttribute("aria-pressed", pressed ? "true" : "false");
+  return b;
+}
+
+/* ---------- Tabs ---------- */
+function showTab(name) {
+  for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", t.dataset.tab === name);
+  for (const p of ["movies", "books", "songs"]) $("panel-" + p).hidden = p !== name;
+}
+for (const t of document.querySelectorAll(".tab")) t.onclick = () => { showTab(t.dataset.tab); history.replaceState(null, "", "#" + t.dataset.tab); };
+if (["#books", "#songs"].includes(location.hash)) showTab(location.hash.slice(1));
+
+/* ---------- Filters ---------- */
+$("ftoggle").onclick = () => {
+  const open = $("filters").classList.toggle("open");
+  $("ftoggle").setAttribute("aria-expanded", open);
+  $("ftoggle").textContent = open ? "Hide filters ▴" : "Filters ▾";
+};
+
+function setEra(min, max) {
+  $("ymin").value = min ?? ""; $("ymax").value = max ?? "";
+  for (const b of $("eras").children) b.setAttribute("aria-pressed", b.dataset.min == (min ?? "") && b.dataset.max == (max ?? ""));
+}
+
+async function loadOptions() {
+  const o = await (await fetch("/api/options")).json();
+  for (const m of o.methods) $("method").append(new Option(METHOD_NAMES[m] || m, m, m === "hybrid", m === "hybrid"));
+  for (const g of o.genres) $("genre").append(new Option(g[0].toUpperCase() + g.slice(1), g));
+  $("ymin").placeholder = o.year_min; $("ymax").placeholder = o.year_max;
+  $("ymin").min = $("ymax").min = o.year_min; $("ymin").max = $("ymax").max = o.year_max;
+  for (const l of o.languages) {
+    const b = chip(LANG_NAMES[l] || l, false); b.dataset.lang = l;
+    b.onclick = () => b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") !== "true");
+    $("langs").append(b);
+  }
+}
+
+for (const [label, min, max] of ERAS) {
+  const b = chip(label, min === null); b.dataset.min = min ?? ""; b.dataset.max = max ?? "";
+  b.onclick = () => setEra(min, max);
+  $("eras").append(b);
+}
+for (const id of ["ymin", "ymax"]) $(id).addEventListener("input", () => {
+  for (const b of $("eras").children) b.setAttribute("aria-pressed", "false");
+});
+
+$("clear").onclick = () => {
+  for (const b of $("langs").children) b.setAttribute("aria-pressed", "false");
+  setEra(null, null); $("genre").value = ""; $("method").value = "hybrid";
+};
+
+for (const m of MOODS) {
+  const b = chip(m); b.onclick = () => { $("q").value = m; search(); };
+  $("moods").append(b);
+}
+
+/* ---------- Results ---------- */
+function card(r) {
+  const c = el("article", undefined, "card");
+  const band = el("div", undefined, "band");
+  band.style.background = GENRE_COLOURS[(r.genres || [])[0]] || "var(--line)";
+  c.append(band);
+
+  const body = el("div", undefined, "body");
+  body.append(el("h2", r.title));
+  body.append(el("div", `${r.year} · ${LANG_NAMES[r.language] || r.language}`, "meta"));
+
+  const genres = (r.genres_fine && r.genres_fine.length ? r.genres_fine : r.genres) || [];
+  if (genres.length) {
+    const tags = el("div", undefined, "tags");
+    for (const g of genres.slice(0, 4)) tags.append(el("span", g, "tag"));
+    body.append(tags);
+  }
+  body.append(el("p", r.first_sentence, "desc"));
+
+  if (r.why && (r.why.best_sentence || r.why.shared_words.length || r.why.matching_genres.length)) {
+    const d = el("details", undefined, "why");
+    d.append(el("summary", "Why this film?"));
+    if (r.why.best_sentence) d.append(el("p", "Closest line in its description: “" + r.why.best_sentence + "”"));
+    if (r.why.matching_genres.length) d.append(el("p", "Matching genre: " + r.why.matching_genres.join(", ")));
+    if (r.why.shared_words.length) d.append(el("p", "Words in common with your search: " + r.why.shared_words.join(", ")));
+    body.append(d);
+  }
+  c.append(body);
+
+  const actions = el("div", undefined, "actions");
+  const more = el("button", "More like this", "btn primary"); more.type = "button";
+  more.onclick = () => similar(r.id, r.title);
+  const wiki = el("a", "Read on Wikipedia ↗", "btn"); wiki.href = r.wiki_url; wiki.target = "_blank"; wiki.rel = "noopener";
+  actions.append(more, wiki);
+  c.append(actions);
+  return c;
+}
+
+function setStatus(text, withBack) {
+  const s = $("status"); s.replaceChildren(el("span", text));
+  if (withBack && state.lastSearch) {
+    const b = el("button", "← Back to your search", "back"); b.type = "button";
+    b.onclick = () => { $("q").value = state.lastSearch.q; run(state.lastSearch.url, state.lastSearch.label); };
+    s.prepend(b);
+  }
+}
+
+async function run(url, label, withBack) {
+  setStatus("Looking for good matches…");
+  $("go").disabled = true;
+  $("results").replaceChildren(...Array.from({length: 6}, () => el("div", undefined, "skeleton")));
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail ? JSON.stringify(data.detail) : "HTTP " + res.status);
+    $("results").replaceChildren();
+    if (!data.results.length) {
+      setStatus("", withBack);
+      $("results").append(el("div", "Nothing matched. Try fewer filters or different words.", "empty"));
+      return;
+    }
+    setStatus(label(data), withBack);
+    for (const r of data.results) $("results").append(card(r));
+  } catch (err) {
+    $("results").replaceChildren();
+    setStatus("Something went wrong: " + err.message + ". Is the server still running?");
+  } finally {
+    $("go").disabled = false;
+  }
+}
+
+function search(e) {
+  e && e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) { $("q").focus(); return; }
+  const p = new URLSearchParams({q, method: $("method").value || "hybrid", k: 12, why: true});
+  if ($("genre").value) p.append("genre", $("genre").value);
+  if ($("ymin").value) p.append("year_min", $("ymin").value);
+  if ($("ymax").value) p.append("year_max", $("ymax").value);
+  for (const b of $("langs").querySelectorAll('[aria-pressed="true"]')) p.append("lang", b.dataset.lang);
+  for (const b of $("moods").children) b.setAttribute("aria-pressed", b.textContent === q);
+  const url = "/api/search?" + p;
+  const label = d => `${d.count} movies for “${q}”`;
+  state.lastSearch = {q, url, label};
+  run(url, label);
+}
+
+function similar(id, title) {
+  run(`/api/similar/${encodeURIComponent(id)}?k=12`, () => `Movies like “${title}”`, true);
+  window.scrollTo({top: 0, behavior: "smooth"});
+}
+
+$("f").addEventListener("submit", search);
+loadOptions().catch(err => setStatus("Couldn't load the filters: " + err.message + ". Is the server running?"));
+$("q").focus();
+</script>
+</body>
+</html>
