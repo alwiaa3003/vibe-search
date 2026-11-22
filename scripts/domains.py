@@ -28,3 +28,7 @@ DOMAINS = {
     },
 }
 MAX_PER_GROUP = 2
+# The user asked (2026-11-22) to leave out South Indian films and songs:
+# anything in Tamil, Telugu, Malayalam or Kannada (also Hindi films that list
+# one of these as a language, e.g. Hindi + Telugu releases).
+SOUTH_INDIAN = {"ta", "te", "ml", "kn"}

@@ -6,7 +6,8 @@ Text status per film:
   plot       - has a Plot/Synopsis section of >= 40 words     (kept)
   lead_only  - no usable plot, but the lead has >= 50 words    (kept, flagged)
 Dropped (with the reason counted):
-  fetch_failed / missing_article / duplicate_article / too_short
+  fetch_failed / missing_article / duplicate_article / too_short /
+  south_indian (lists Tamil, Telugu, Malayalam or Kannada; the user's choice)
 Output: data/clean/films.jsonl + data/clean/fetch_info.json (local only).
 Run:  python scripts/clean_data.py
 """
@@ -17,6 +18,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from domains import SOUTH_INDIAN
 from text_utils import (coarse_genres, display_title, normalise_genre,
                         sentences, tidy, words)
 
@@ -33,6 +35,9 @@ def clean_all(wd, wp):
     rows, reason, seen_titles = [], {}, set()
     for qid in wp["selected"]:
         f, t = by_qid[qid], wp["texts"].get(qid)
+        if SOUTH_INDIAN & set(f.get("languages") or []):
+            reason[qid] = "south_indian"
+            continue
         if qid in failed:
             reason[qid] = "fetch_failed"
             continue
@@ -106,7 +111,7 @@ def report(wd, wp, rows, reason):
           f"kept {len(rows)}\n")
 
     cols = ["plot", "lead_only", "too_short", "missing_article",
-            "duplicate_article", "fetch_failed"]
+            "duplicate_article", "fetch_failed", "south_indian"]
     print("Per language (selected films by outcome):")
     print("  lang  cand   sel " + " ".join(f"{c[:9]:>9}" for c in cols) + "   KEPT usable")
     for code in LANG_ORDER:

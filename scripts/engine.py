@@ -36,6 +36,41 @@ def bm25_text(film):
                      film["lead"], film["plot"]])
 
 
+FILLER = {"songs", "song", "by", "of", "from", "best", "hits", "top", "books", "book",
+          "novels", "novel", "music", "tracks", "sung", "written", "singer", "author"}
+
+
+def norm_name(text):
+    """'A. R. Rahman' -> 'ar rahman': lowercase, no dots, runs of single
+    letters (initials) joined, so 'AR Rahman' and 'A.R. Rahman' match too."""
+    out, run = [], ""
+    for w in re.findall(r"[a-z0-9]+", text.lower()):
+        if len(w) == 1 and w.isalpha():
+            run += w
+            continue
+        if run:
+            out.append(run)
+            run = ""
+        out.append(w)
+    if run:
+        out.append(run)
+    return " ".join(out)
+
+
+def people_index(films):
+    """{normalised name: (display name, [item indices])} from the 'creator'
+    field; song credits like 'Udit Narayan, Alka Yagnik' are split per person."""
+    people = {}
+    for i, f in enumerate(films):
+        for name in re.split(r",|&| feat\.? | ft\.? | and | x ", f.get("creator") or ""):
+            name = name.strip()
+            key = norm_name(name)
+            if len(key) < 2 or key in {"unknown", "unknown artist", "various artists"}:
+                continue
+            people.setdefault(key, (name, []))[1].append(i)
+    return people
+
+
 class Engine:
     def __init__(self, films, short_vecs, chunk_vecs, chunk_owner, encode,
                  rerank_fn=None, short_texts=None, chunk_texts=None, max_per_group=None):
@@ -54,6 +89,7 @@ class Engine:
         self.chunk_end = np.searchsorted(chunk_owner, n, side="right")
         self.id_to_idx = {f["id"]: i for i, f in enumerate(films)}
         self.bm25 = BM25Okapi([tokenize(bm25_text(f)) for f in films])
+        self.people = people_index(films)  # artist/author name -> item indices
 
     # ---------- scoring: one score per film, higher = better ----------
     def scores_short(self, qvec):
@@ -70,7 +106,7 @@ class Engine:
 
     # ---------- filters ----------
     def mask(self, year_min=None, year_max=None, languages=None, genres=None,
-             indian=None, exclude=None):
+             indian=None, exclude=None, only=None):
         """Boolean array: True for films that pass every given filter."""
         m = np.ones(len(self.films), dtype=bool)
         for i, f in enumerate(self.films):
@@ -86,6 +122,8 @@ class Engine:
                 m[i] = False
         if exclude is not None:
             m[exclude] = False
+        if only is not None:  # boolean array: keep only these items
+            m &= only
         return m
 
     @staticmethod
@@ -100,12 +138,51 @@ class Engine:
 
     # ---------- main entry point ----------
     def search(self, query, method="hybrid", k=10, **filters):
-        """Return a list of (film_index, score) for the query."""
+        """Return a list of (film_index, score) for the query.
+        If the query names an artist/author (e.g. "arijit singh sad songs"),
+        their items come first, ranked by the rest of the query."""
+        names, rest = self.find_people(query)
+        if names:
+            only = np.zeros(len(self.films), dtype=bool)
+            only[sorted({i for n in names for i in self.people[n][1]})] = True
+            if tokenize(rest):
+                first = self._search(rest, method, k, only=only, **filters)
+            else:  # just a name: newest first
+                m = self.mask(only=only, **filters)
+                first = sorted(((int(i), 1.0) for i in np.flatnonzero(m)),
+                               key=lambda x: (-self.films[x[0]]["year"], x[0]))[:k]
+            got = {i for i, _ in first}
+            others = [r for r in self._capped(query, method, k + len(got), **filters)
+                      if r[0] not in got]
+            return (first + others)[:k]
+        return self._capped(query, method, k, **filters)
+
+    def _capped(self, query, method, k, **filters):
         if not self.max_per_group:
             return self._search(query, method, k, **filters)
         # Songs from one film share the film's text, so they score alike:
         # fetch more, then keep at most max_per_group per film.
         return self.diversify(self._search(query, method, k * 6, **filters), k)
+
+    def find_people(self, query):
+        """Artist/author names written in the query, and the query without them.
+        Names of one word ("KK", "Pritam") only count when the query is just
+        that name (plus words like "songs"), so "rain" can't hit an artist "Rain"."""
+        q = " " + norm_name(query) + " "
+        found = []
+        for key, (label, _) in sorted(self.people.items(), key=lambda x: -len(x[0])):
+            if " " in key:
+                if " " + key + " " in q:
+                    found.append(key)
+                    q = q.replace(" " + key + " ", " ")
+            elif [w for w in q.split() if w not in FILLER] == [key]:
+                found.append(key)
+                q = " "
+        rest = " ".join(w for w in q.split() if w not in FILLER)
+        return found, rest
+
+    def people_names(self, query):
+        return [self.people[n][0] for n in self.find_people(query)[0]]
 
     def diversify(self, ranked, k):
         out, seen = [], {}
@@ -133,7 +210,7 @@ class Engine:
             s = self.scores_chunks(qvec)
             return [(i, float(s[i])) for i in self.top(s, m, k)]
         # hybrid: reciprocal rank fusion of the three ranked lists (top 100 each)
-        depth = 100
+        depth = max(100, k)
         lists = [self.top(self.scores_bm25(query), m, depth),
                  self.top(self.scores_short(qvec), m, depth),
                  self.top(self.scores_chunks(qvec), m, depth)]
@@ -146,10 +223,13 @@ class Engine:
             return ranked[:k]
         # hybrid_rerank: cross-encoder re-scores the top 30 hybrid results
         self.enable_rerank()  # loads the model on first use
-        cand = [i for i, _ in ranked[:max(30, k)]]
+        # (results after the top 30 keep their hybrid order, below them)
+        cand = [i for i, _ in ranked[:30]]
         rs = self.rerank_fn(query, [self.short_texts[i] for i in cand])
         order = sorted(zip(cand, rs), key=lambda x: (-x[1], x[0]))
-        return [(i, float(s)) for i, s in order[:k]]
+        low = min(rs) if len(rs) else 0.0
+        rest = [(i, float(low) - 1.0 - n) for n, (i, _) in enumerate(ranked[30:k])]
+        return ([(i, float(s)) for i, s in order] + rest)[:k]
 
     def more_like_this(self, film_id, k=10, **filters):
         """Films whose short vector is closest to this film's short vector."""

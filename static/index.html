@@ -119,6 +119,11 @@
   @keyframes shimmer { to { background-position: -200% 0; } }
   @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 
+  .morebox { text-align: center; margin-top: 22px; }
+  .more { border: 1px solid var(--accent); background: var(--card); color: var(--accent); font-weight: 700;
+          font-size: 1rem; padding: 11px 30px; border-radius: 999px; }
+  .more:hover { background: var(--accent); color: var(--accent-fg); }
+  .more:disabled { opacity: .6; }
   .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
   .soonbox { background: var(--card); border: 1px dashed var(--line); border-radius: 16px; padding: 28px 22px; text-align: center; }
   .soonbox h2 { font-family: Georgia, serif; font-weight: 600; margin: 0 0 6px; }
@@ -153,7 +158,6 @@
       <button class="go" type="submit" id="go">Find</button>
     </form>
 
-    <div class="hint" id="about"></div>
     <div class="hint">Not sure? Try one of these:</div>
     <div class="chips" id="moods"></div>
 
@@ -184,6 +188,7 @@
 
     <div id="status" role="status" aria-live="polite"></div>
     <div id="results" class="grid"></div>
+    <div class="morebox"><button class="more" id="more" type="button" hidden>Show more</button></div>
   </section>
 
   <section id="notbuilt" hidden>
@@ -213,16 +218,16 @@ const DOMAIN_UI = {
                    "Edge-of-my-seat thriller", "Light romantic comedy", "Mind-bending sci-fi",
                    "Something to watch with the whole family", "A good cry", "Scary but not too gory"]},
   books:  {noun: "books", one: "book", button: "Find books",
-           placeholder: "What do you want to read? e.g. slow, beautiful story about family and memory",
+           placeholder: "A mood or an author, e.g. slow, beautiful story about family, or Amitav Ghosh",
            about: "Indian books, plus well-known English-language books from many countries, 2000 onwards.",
            moods: ["A gripping crime story I can't put down", "Moving story about family and memory",
                    "Funny and light for a holiday", "Epic fantasy world", "Life in a small Indian town",
                    "Dark dystopian future", "True story that inspires", "Love story with a sad ending"]},
   songs:  {noun: "songs", one: "song", button: "Find songs",
-           placeholder: "What's the mood? e.g. romantic songs for a long drive",
+           placeholder: "A mood or a singer, e.g. romantic songs for a long drive, or Arijit Singh sad songs",
            about: "Indian songs from 2000 onwards. Film songs are matched through their film's story, so you get songs from films that fit the mood.",
            moods: ["Romantic songs for a long drive", "Party songs for a wedding", "Sad songs after a breakup",
-                   "Songs about friendship", "Patriotic and inspiring", "Punjabi dance hits",
+                   "Songs about friendship", "Arijit Singh sad songs", "Punjabi dance hits",
                    "Sufi and soulful", "Songs from feel-good college films"]},
 };
 const METHOD_NAMES = {hybrid:"Best match (recommended)", hybrid_rerank:"Best match + re-ranking (slower)",
@@ -265,13 +270,14 @@ async function showTab(name) {
     $("nb-text").textContent = `The ${ui.noun} data hasn't been built on this computer. ${ui.about}`;
     return;
   }
-  $("q").placeholder = ui.placeholder; $("go").textContent = ui.button; $("about").textContent = ui.about;
+  $("q").placeholder = ui.placeholder; $("go").textContent = ui.button;
   $("moods").replaceChildren();
   for (const m of ui.moods) {
     const b = chip(m); b.onclick = () => { $("q").value = m; search(); };
     $("moods").append(b);
   }
   $("results").replaceChildren(); $("status").replaceChildren(); state.lastSearch = null;
+  $("more").hidden = true; state.page = null;
   document.body.classList.remove("searched");
   await loadOptions(name).catch(err => setStatus("Couldn't load the filters: " + err.message));
 }
@@ -309,7 +315,6 @@ async function loadOptions(domain) {
     $("langs").append(b);
   }
   setEra(null, null);
-  $("about").textContent = `${DOMAIN_UI[domain].about} (${o.count.toLocaleString()} ${DOMAIN_UI[domain].noun})`;
 }
 
 for (const [label, min, max] of ERAS) {
@@ -381,23 +386,23 @@ function setStatus(text, withBack) {
   }
 }
 
+const PAGE = 12;  // results per page; "Show more" asks for the next 12
+
 async function run(url, label, withBack) {
   document.body.classList.add("searched");   // move the header up once results appear
   setStatus("Looking for good matches…");
-  $("go").disabled = true;
+  $("go").disabled = true; $("more").hidden = true;
   $("results").replaceChildren(...Array.from({length: 6}, () => el("div", undefined, "skeleton")));
+  state.page = {url, label, withBack, shown: 0};
   try {
-    const res = await fetch(url);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail ? JSON.stringify(data.detail) : "HTTP " + res.status);
+    const data = await fetchPage(0);
     $("results").replaceChildren();
     if (!data.results.length) {
       setStatus("", withBack);
       $("results").append(el("div", "Nothing matched. Try fewer filters or different words.", "empty"));
       return;
     }
-    setStatus(label(data), withBack);
-    for (const r of data.results) $("results").append(card(r));
+    addResults(data);
   } catch (err) {
     $("results").replaceChildren();
     setStatus("Something went wrong: " + err.message + ". Is the server still running?");
@@ -406,26 +411,59 @@ async function run(url, label, withBack) {
   }
 }
 
+async function fetchPage(offset) {
+  const res = await fetch(`${state.page.url}&k=${PAGE}&offset=${offset}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail ? JSON.stringify(data.detail) : "HTTP " + res.status);
+  return data;
+}
+
+function addResults(data) {
+  for (const r of data.results) $("results").append(card(r));
+  state.page.shown += data.results.length;
+  setStatus(state.page.label(data, state.page.shown), state.page.withBack);
+  $("more").hidden = !data.more;
+}
+
+$("more").onclick = async () => {
+  const page = state.page, b = $("more");
+  b.disabled = true; b.textContent = "Loading…";
+  try {
+    const data = await fetchPage(page.shown);
+    if (state.page !== page) return;        // a new search started meanwhile
+    addResults(data);
+    if (!data.results.length) b.hidden = true;
+  } catch (err) {
+    setStatus("Couldn't load more: " + err.message);
+  } finally {
+    b.disabled = false; b.textContent = "Show more";
+  }
+};
+
 function search(e) {
   e && e.preventDefault();
   const q = $("q").value.trim();
   if (!q) { $("q").focus(); return; }
   const d = state.domain;
-  const p = new URLSearchParams({q, domain: d, method: $("method").value || "hybrid", k: 12, why: true});
+  const p = new URLSearchParams({q, domain: d, method: $("method").value || "hybrid", why: true});
   if ($("genre").value) p.append("genre", $("genre").value);
   if ($("ymin").value) p.append("year_min", $("ymin").value);
   if ($("ymax").value) p.append("year_max", $("ymax").value);
   for (const b of $("langs").querySelectorAll('[aria-pressed="true"]')) p.append("lang", b.dataset.lang);
   for (const b of $("moods").children) b.setAttribute("aria-pressed", b.textContent === q);
   const url = "/api/search?" + p;
-  const label = r => `${r.count} ${DOMAIN_UI[d].noun} for “${q}”`;
+  const label = (r, shown) => {
+    const who = r.people && r.people.length ? ` (${r.people.join(", ")} first)` : "";
+    return `${shown} ${DOMAIN_UI[d].noun} for “${q}”${who}`;
+  };
   state.lastSearch = {q, url, label};
   run(url, label);
 }
 
 function similar(id, title) {
   const d = state.domain;
-  run(`/api/similar/${encodeURIComponent(id)}?domain=${d}&k=12`, () => `${DOMAIN_UI[d].noun[0].toUpperCase() + DOMAIN_UI[d].noun.slice(1)} like “${title}”`, true);
+  run(`/api/similar/${encodeURIComponent(id)}?domain=${d}`,
+      (r, shown) => `${shown} ${DOMAIN_UI[d].noun} like “${title}”`, true);
   window.scrollTo({top: 0, behavior: "smooth"});
 }
 

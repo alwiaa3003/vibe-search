@@ -6,12 +6,14 @@ exact keyword matches.
 
 | Section | What's in it (fetched 2026-11-22) |
 |---|---|
-| **Movies** | 5,243 films from 2000-2026: 2,556 Bollywood (Hindi) and 2,687 Hollywood (American, the 100 best-known per year) |
+| **Movies** | 5,201 films from 2000-2026: 2,515 Bollywood (Hindi) and 2,686 Hollywood (American, the 100 best-known per year) |
 | **Books** | 1,614 books from 2000-2026: 338 Indian books and 1,276 well-known English-language novels from many countries |
-| **Songs** | 13,029 Indian songs from 2000-2026: 12,730 film songs from 2,195 films (7,216 Hindi, 2,764 Tamil, 1,148 Telugu, then Punjabi, Malayalam, Kannada, Urdu, Marathi, Bengali, ...) and 299 non-film singles |
+| **Songs** | 8,399 Indian songs from 2000-2026: 8,132 film songs from 1,320 films (7,031 Hindi, then Punjabi, Urdu, English, Marathi, Bengali) and 267 non-film singles |
 
 All data comes from free, openly licensed sources (Wikidata, Wikipedia and MusicBrainz). Everything runs
 on a laptop CPU. Only song titles and artists are shown: no lyrics and no audio.
+South Indian films and songs (Tamil, Telugu, Malayalam, Kannada) are left out on purpose: this includes
+Hindi films that also list one of those languages (for example Hindi + Telugu releases), 43 films in all.
 
 > **Demo video:** _TODO: add link_
 
@@ -26,6 +28,12 @@ on a laptop CPU. Only song titles and artists are shown: no lyrics and no audio.
 - **Filters:** year range, genre, and a group (movies: Bollywood / Hollywood; books: Indian /
   international; songs: language).
 - **More like this:** nearest items to a given item (for songs: songs from *other* films).
+- **Artist and author names:** a query that names a singer or author ("Arijit Singh sad songs",
+  "Amitav Ghosh") puts their items first, ranked by the rest of the query. Song credits like
+  "Udit Narayan, Alka Yagnik" count for each person; one-word names ("KK", "Shaan") only count when the
+  query is just that name, so a mood word can't trigger an artist by accident.
+- **Show more:** results come 12 at a time, up to 300; every page is cut from the same ranking, so
+  pages never repeat.
 - **Why it matched:** the sentence closest to the query, shared words, and matching genres.
 - **Evaluation tooling** (movies): blind pooled labelling, then Recall@10, MRR and nDCG@10 per method,
   plus a failure analysis.
@@ -210,14 +218,16 @@ only); re-check both before going live. Docker has **not** been built or tested.
   - Film songs are found through their **film's** Wikipedia text, not the song itself, so all songs of
     one film look the same to the search (results show at most 2 per film). The song's own title helps
     only when it contains the query words ("Long Drive", "The Breakup Song").
-  - Only soundtracks that could be matched to a film with Wikipedia text are included: 2,195 of 7,860
-    Indian soundtrack releases. For languages other than Hindi, the films come from the earlier
-    2010-2026 data, so non-Hindi film songs are mostly from 2010 onwards.
+  - Only soundtracks that could be matched to a film with Wikipedia text, and that aren't South Indian,
+    are included: 1,320 films (from 7,860 Indian soundtrack releases). For Punjabi, Marathi and Bengali,
+    the films come from the earlier 2010-2026 data, so those film songs are mostly from 2010 onwards.
   - MusicBrainz search returns at most 500 results per query: one query (2022, released in India) had
     563, so 63 soundtrack releases were not seen.
   - Artist credits are as MusicBrainz lists them, so they can include lyricists and composers, not only
     singers.
-  - Non-film singles (299) only have tags; self-promotion tags ("<artist> official", "best of ...") and
+  - Name search only knows the names MusicBrainz credits (or Wikidata's author); 31 books have no
+    author on Wikidata (for example some Salman Rushdie books), so their author's name doesn't find them.
+  - Non-film singles (267) only have tags; self-promotion tags ("<artist> official", "best of ...") and
     tag-spam releases were removed, but tag quality is uneven.
   - A soundtrack is matched by title and year (within 1 year), so a few may be matched to the wrong film
     with the same name.

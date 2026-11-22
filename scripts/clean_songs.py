@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from domains import DOMAINS
+from domains import DOMAINS, SOUTH_INDIAN
 from text_utils import GENRE_RULES, coarse_genres, sentences, take_sentences
 
 OUT = Path("data/clean/songs.jsonl")
@@ -36,8 +36,8 @@ SONG_GENRE_RULES = GENRE_RULES + [
     ("filmi", "filmi"), ("bollywood", "filmi"), ("jazz", "jazz"), ("r&b", "r&b"),
     ("soul", "r&b"), ("ambient", "electronic"), ("acoustic", "acoustic"),
 ]
-MAX_TAGS = 25
-PLOT_WORDS = 250  # words of the film's plot kept per film song  # more tags than this on one single looks like tag spam
+MAX_TAGS = 25  # more tags than this on one single looks like tag spam
+PLOT_WORDS = 250  # words of the film's plot kept per film song
 
 
 def load_films():
@@ -62,6 +62,10 @@ def film_song_rows(raw, films):
         if not f or not title:
             dropped["no film/title"] += 1
             continue
+        lang = LANG.get(s["language"] or "") or f["language"]
+        if SOUTH_INDIAN & ({lang, f["language"]} | set(f.get("all_languages") or [])):
+            dropped["South Indian film or language"] += 1
+            continue
         if SKIP.search(title):
             dropped["instrumental/karaoke/dialogue"] += 1
             continue
@@ -70,7 +74,6 @@ def film_song_rows(raw, films):
             dropped["another version of the same song"] += 1
             continue
         seen.update({(f["id"], base), s["recording_id"]})
-        lang = LANG.get(s["language"] or "") or f["language"]
         if lang not in DOMAINS["songs"]["groups"]:
             lang = "other"
         artist = s["artist"] or "unknown artist"
@@ -127,6 +130,9 @@ def single_rows(raw):
         # isn't enough (it also matches Pakistani releases).
         if s.get("country") != "IN" and LANG.get(s.get("language") or "") in (None, "ur", "en"):
             dropped["not Indian (released elsewhere, non-Indian language)"] += 1
+            continue
+        if LANG.get(s.get("language") or "") in SOUTH_INDIAN:
+            dropped["South Indian language"] += 1
             continue
         if len(s["tags"]) > MAX_TAGS:
             dropped["tag spam"] += 1
